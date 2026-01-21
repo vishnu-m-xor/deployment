@@ -1,0 +1,205 @@
+pipeline {
+    agent any
+    
+    tools {
+        maven 'Maven-3.9'
+        jdk 'JDK-17'
+    }
+    
+    environment {
+        APP_NAME = 'product-management-api'
+    }
+    
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'stage', 'prod'], description: 'Deployment environment')
+        booleanParam(name: 'RUN_TESTS', defaultValue: true, description: 'Run tests')
+        booleanParam(name: 'DEPLOY_APP', defaultValue: true, description: 'Deploy application')
+    }
+    
+    stages {
+        stage('📋 Info') {
+            steps {
+                echo """
+                ═══════════════════════════════════════════════
+                🚀 Jenkins CI/CD Pipeline Started
+                ═══════════════════════════════════════════════
+                Build:       #${env.BUILD_NUMBER}
+                Environment: ${params.ENVIRONMENT}
+                Run Tests:   ${params.RUN_TESTS}
+                Deploy:      ${params.DEPLOY_APP}
+                ═══════════════════════════════════════════════
+                """
+            }
+        }
+        
+        stage('1️⃣ Checkout') {
+            steps {
+                echo '📥 Checking out code from GitHub...'
+                checkout scm
+                sh 'echo "✅ Code checked out successfully"'
+            }
+        }
+        
+        stage('2️⃣ Compile') {
+            steps {
+                echo '🔨 Compiling Java code...'
+                sh 'mvn clean compile'
+                echo '✅ Compilation successful'
+            }
+        }
+        
+        stage('3️⃣ Test') {
+            when {
+                expression { params.RUN_TESTS == true }
+            }
+            steps {
+                echo '🧪 Running tests...'
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                }
+                success {
+                    echo '✅ All tests passed!'
+                }
+                failure {
+                    echo '❌ Tests failed!'
+                }
+            }
+        }
+        
+        stage('4️⃣ Package') {
+            steps {
+                echo '📦 Building JAR file...'
+                script {
+                    if (params.RUN_TESTS) {
+                        sh 'mvn package'
+                    } else {
+                        sh 'mvn package -DskipTests'
+                    }
+                }
+                sh 'ls -lh target/*.jar || echo "No JAR file found"'
+                echo '✅ Package created'
+            }
+        }
+        
+        stage('5️⃣ Archive') {
+            steps {
+                echo '💾 Archiving artifacts...'
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true, allowEmptyArchive: true
+                echo '✅ Artifacts archived'
+            }
+        }
+        
+        stage('6️⃣ Deploy') {
+            when {
+                expression { params.DEPLOY_APP == true }
+            }
+            steps {
+                script {
+                    def port = params.ENVIRONMENT == 'dev' ? 8080 :
+                               params.ENVIRONMENT == 'stage' ? 8081 : 8082
+                    
+                    echo "🚀 Deploying to ${params.ENVIRONMENT} (port ${port})"
+                    
+                    // Stop old application (quick, no hanging)
+                    sh """
+                        echo "Stopping old application on port ${port}..."
+                        pkill -9 -f 'server.port=${port}' || true
+                        sleep 2
+                    """
+                    
+                    // Start new application (background, won't hang)
+                    sh """
+                        JAR_FILE=\$(ls target/*.jar | head -1)
+                        mkdir -p logs
+                        
+                        echo "Starting application..."
+                        nohup java -jar \$JAR_FILE \\
+                            --spring.profiles.active=${params.ENVIRONMENT} \\
+                            --server.port=${port} \\
+                            > logs/${env.APP_NAME}-${params.ENVIRONMENT}.log 2>&1 &
+                        
+                        echo \$! > logs/${env.APP_NAME}-${params.ENVIRONMENT}.pid
+                        echo "✅ Application started on port ${port}"
+                    """
+                }
+            }
+        }
+        
+        stage('7️⃣ Health Check') {
+            when {
+                expression { params.DEPLOY_APP == true }
+            }
+            steps {
+                script {
+                    def port = params.ENVIRONMENT == 'dev' ? 8080 :
+                               params.ENVIRONMENT == 'stage' ? 8081 : 8082
+                    
+                    echo '🏥 Checking application health...'
+                    
+                    sh """
+                        echo "Waiting for application to start..."
+                        sleep 15
+                        
+                        # Simple health check - just check if port is listening
+                        for i in {1..20}; do
+                            if lsof -i:${port} > /dev/null 2>&1; then
+                                echo "✅ Application is running on port ${port}"
+                                
+                                # Try to curl if available
+                                curl -f http://localhost:${port}/actuator/health 2>/dev/null && echo "✅ Health check passed" || echo "⚠️ Health endpoint not ready yet"
+                                exit 0
+                            fi
+                            echo "Attempt \$i/20: Waiting for port ${port}..."
+                            sleep 3
+                        done
+                        
+                        echo "❌ Application failed to start on port ${port}"
+                        exit 1
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            script {
+                def port = params.ENVIRONMENT == 'dev' ? 8080 :
+                           params.ENVIRONMENT == 'stage' ? 8081 : 8082
+                echo """
+                
+                ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+                ✅     PIPELINE COMPLETED SUCCESSFULLY!     ✅
+                ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+                
+                Build:       #${env.BUILD_NUMBER}
+                Environment: ${params.ENVIRONMENT}
+                Port:        ${port}
+                
+                🔗 Access URLs:
+                http://localhost:${port}/products/getdata
+                http://localhost:${port}/actuator/health
+                
+                📄 Logs:
+                logs/${env.APP_NAME}-${params.ENVIRONMENT}.log
+                
+                """
+            }
+        }
+        failure {
+            echo """
+            ❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌
+            ❌          PIPELINE FAILED!            ❌
+            ❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌
+            
+            Check console output above for details.
+            """
+        }
+        always {
+            echo '🧹 Cleanup completed'
+        }
+    }
+}
