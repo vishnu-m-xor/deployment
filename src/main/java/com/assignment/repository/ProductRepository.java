@@ -28,6 +28,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
 	 @Query("SELECT count(p) from Product p where p.name = :cname")
 	 Long CountByName(@Param("cname") String cname);
+	 
 	
 
 }
