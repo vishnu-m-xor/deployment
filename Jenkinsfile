@@ -32,17 +32,20 @@ pipeline {
                 archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
             }
         }
-        stage('Deploy') {
-            steps {
-                sh '''
-                    JAR_FILE=$(ls target/*.jar | grep -v original | head -1)
-                    pkill -f "java -jar" || true
-                    sleep 3
-                    nohup java -jar $JAR_FILE --server.port=8081 > app.log 2>&1 &
-                    echo "App started on port 8081"
-                '''
-            }
-        }
+      stage('Deploy') {
+    steps {
+        sh '''
+            JAR_FILE=$(ls target/*.jar | grep -v original | head -1)
+
+            # Kill the process on port 8081 (works without sudo)
+            fuser -k 8081/tcp || true
+            sleep 3
+
+            nohup java -jar $JAR_FILE --server.port=8081 > app.log 2>&1 &
+            echo "App started on port 8081"
+        '''
+    }
+}
         stage('Health Check') {
             steps {
                 sh '''
