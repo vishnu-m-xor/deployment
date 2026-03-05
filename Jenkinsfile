@@ -100,8 +100,8 @@ pipeline {
             }
             steps {
                 script {
-                    def port = params.ENVIRONMENT == 'dev' ? 8080 :
-                               params.ENVIRONMENT == 'stage' ? 8081 : 8082
+                    def port = params.ENVIRONMENT == 'dev' ? 8081 :
+                               params.ENVIRONMENT == 'stage' ? 8082 : 8083
                     
                     echo "🚀 Deploying to ${params.ENVIRONMENT} (port ${port})"
                     
