@@ -46,7 +46,7 @@ pipeline {
                     pkill -f "java -jar" || true
                     sleep 3
                     nohup java -jar $JAR_FILE --server.port=8081 > app.log 2>&1 &
-                    echo "App started on port 8080"
+                    echo "App started on port 8081"
                 '''
             }
         }
