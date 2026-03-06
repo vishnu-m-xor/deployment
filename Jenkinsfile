@@ -1,6 +1,5 @@
-//jenkins 
-//webhook testing
-
+//testing automatic build
+//testing webhook
 pipeline {
     agent any
     
